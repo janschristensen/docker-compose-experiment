@@ -1,0 +1,7 @@
+{
+      "jenkins": "CI/CD",
+      "nexus": "Binaries",
+      "whoami": "Testpage",
+      "portainer": "Details about containers, stacks ...",
+      "gitbucket": "A git backend and frontend"
+}

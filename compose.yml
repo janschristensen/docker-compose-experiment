@@ -1,0 +1,123 @@
+services:
+  links:
+    env_file:
+      - secrets.env        
+    build: .
+    volumes:
+      - .:/code
+    environment:
+      FLASK_DEBUG: "true"
+    ports:
+    - "5000:5000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.links.rule=Host(`links.localhost`)"
+      - "traefik.http.routers.links.entrypoints=web"        
+  redis:
+    image: "redis:alpine"   
+    volumes:
+      - redis-data:/data
+  nexus:
+    image: "sonatype/nexus3"
+    volumes:
+      - "nexus-data:/nexus-data"        
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nexus.rule=Host(`nexus.localhost`)"
+      - "traefik.http.routers.nexus.entrypoints=web"        
+    links:
+      - jenkins        
+  jenkins:
+    image: "jenkins/jenkins:2.414.3-lts-jdk17"
+    volumes:
+      - jenkins-data:/var/jenkins_home
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jenkins.rule=Host(`jenkins.localhost`)"
+      - "traefik.http.routers.jenkins.entrypoints=web"        
+  ssh-agent:
+    image: jenkins/ssh-agent
+  traefik:
+    image: traefik:v3.0
+    ports:  
+      - 8080:8080
+      - 80:80
+    container_name: "traefik"
+    command:
+      #- "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.ssh.address=:22"
+      - "--entrypoints.jdbc.address=:5432"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+  whoami:
+    image: "traefik/whoami"
+    container_name: "simple-service"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.localhost`)"
+      - "traefik.http.routers.whoami.entrypoints=web"
+  portainer:
+    image: portainer/portainer-ce:latest
+    volumes:
+      - portainer-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.portainer.rule=Host(`portainer.localhost`)"
+      - "traefik.http.routers.portainer.entrypoints=web"        
+      - "traefik.http.services.portianer.loadbalancer.server.port=9000"
+  gitbucket:
+    environment:      
+      GITBUCKET_HOME: /data/gitbucket
+      GITBUCKET_MAXFILESIZE: 10485760
+      GITBUCKET_BASE_URL: http://gitbucket.localhost
+      GITBUCKET_DB_URL: jdbc:postgresql://postgresqldb:5432/gitbucket_db
+      GITBUCKET_DB_USER: db_user
+      GITBUCKET_DB_PASSWORD: S3cret
+    image: gitbucket/gitbucket
+    volumes:
+      - gitbucket-data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.gitbucket.rule=Host(`gitbucket.localhost`)"
+      - "traefik.http.routers.gitbucket.entrypoints=web"        
+      - "traefik.http.services.gitbucket.loadbalancer.server.port=8080"
+      - "traefik.tcp.routers.gitbucket-ssh.rule=HostSNI(`*`)"
+      - "traefik.tcp.routers.gitbucket-ssh.entrypoints=ssh"
+      - "traefik.tcp.routers.gitbucket-ssh.service=gitbucket-ssh-svc"
+      - "traefik.tcp.services.gitbucket-ssh-svc.loadbalancer.server.port=22"        
+    links:
+      - db
+  db:
+    environment:
+      POSTGRES_PASSWORD: "S3cret"
+      POSTGRES_USER: "db_user"
+      POSTGRES_DB: "gitbucket_db"
+    container_name: 'postgresqldb'
+    ports:
+      - 5432:5432
+    expose:
+      - 5432      
+    image: "postgres:14-alpine"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.tcp.routers.db-jdbc.rule=Host(`*`)"
+      - "traefik.tcp.routers.db-jdbc.entrypoints=jdbc"
+      - "traefik.tcp.routers.db-jdbc.service=db-jdbc-svc"
+      - "traefik.tcp.services.db-jdbc-svc.loadbalancer.server.port=5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+volumes:
+  db-data: {}        
+  gitbucket-data: {}        
+  portainer-data: {}        
+  jenkins-data: {}        
+  nexus-data: {}        
+  redis-data:
+    driver: local    
